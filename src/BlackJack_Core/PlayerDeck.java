@@ -40,5 +40,9 @@ public class PlayerDeck extends Deck {
 	public void isFinishedNow() {
 		isFinished = true;
 	}
+	
+	public boolean isFinished() {
+		return isFinished;
+	}
 
 }

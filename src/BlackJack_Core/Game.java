@@ -2,14 +2,6 @@ package BlackJack_Core;
 import java.util.ArrayList;
 //0: setting bets 1: hit / stand 2: end of round: loose or win ?
 
-import com.sun.source.tree.NewClassTree;
-
-enum State {
-	SETUP,
-	RUNNING,
-	PAY_OUT
-}
-
 public class Game implements GameInterface{
 	
 	
@@ -23,17 +15,20 @@ public class Game implements GameInterface{
 	private int insurance;
 	private int payOut;
 	private ArrayList<GameObserver> observers;
-	private State state;
+	private GameState state;
 	private Config config;
 	
 	public Game() {
+		config = new Config();
+		
 		playerDecks = new ArrayList<PlayerDeck>();
 		dealerDeck = new DealerDeck();
 		activePlayerDeck = new PlayerDeck();
+
 		
 		//Fill cardStack with 5 full card decks
 		pack = new ArrayList<Card>();
-		for(int i = 0; i < 5; i++) {
+		for(int i = 0; i < config.getPackSize(); i++) {
 			for(int color = 0; color<4; color++) {
 				for(int number = 2; number <=14; number++) {
 					pack.add(new Card(color, number));
@@ -42,15 +37,24 @@ public class Game implements GameInterface{
 		}
 		observers = new ArrayList<GameObserver>();
 		
-		config = new Config();
+
 		
 	}
 	
 	private Card cardFromPack() {
 		int randomNum = (int) (Math.random() * pack.size());
 		Card c = pack.remove(randomNum);
+		if(pack.size() == 36) {
+			pack = new ArrayList<Card>();
+			for(int i = 0; i < config.getPackSize(); i++) {
+				for(int color = 0; color<4; color++) {
+					for(int number = 2; number <=14; number++) {
+						pack.add(new Card(color, number));
+					}
+				}
+			}
+		}
 		return c;
-		//TODO: Not finished here;
 	}
 	
 	private int calculatePayout() {
@@ -59,31 +63,47 @@ public class Game implements GameInterface{
 	}
 	//can change
 	public void hit() {
-		activePlayerDeck.addCard(cardFromPack());
-		/*
-		 *if tr7 and one deck
-		 *	setPayout
-		 * 	payout
-		 * if bust
-		 * 	payout (0)
-		 * 
-		 * 
-		 */
-		notifyGameObserver();
+		activePlayerDeck.addCard(cardFromPack());		
+		if(playerDecks.size() == 1 && activePlayerDeck.isTripleSeven()) {
+			state = GameState.PAY_OUT;
+			payOut = 2*bet; //TODO temporary
+		}
+		else if(activePlayerDeck.isBust()) {	
+			stand();
+		}
 		
 	}
+	
+	
 	//wont change
 	public void stand() {
-		playDealer();
+		activePlayerDeck.isFinishedNow();
+		boolean hasFoundUnfinishedDeck = false;
+		for(PlayerDeck pd : playerDecks) {
+			
+			if(!pd.isFinished()) {
+				hasFoundUnfinishedDeck = true;
+				activePlayerDeck = pd;
+			}
+		}
+		if(!hasFoundUnfinishedDeck) {
+			state = GameState.PAY_OUT;	
+			playDealer();
+		}
 		notifyGameObserver();
 	}
 	//can change
 	public void split() {
-		playerDecks.add(activePlayerDeck.split());
+		PlayerDeck deck = activePlayerDeck.split();
+		deck.addCard(cardFromPack());
+		activePlayerDeck.addCard(cardFromPack());
+		playerDecks.add(deck);
+
 	}
 	
 	public void setBet (int cash) {
 		this.bet = cash;
+		state = GameState.PLAYER_TURN;
 		notifyGameObserver();
 	}
 	
@@ -93,15 +113,26 @@ public class Game implements GameInterface{
 	}
 	
 	public void newRound() {
-		state = State.SETUP;
+		state = GameState.SETUP;
 		dealerDeck.flush();
 		activePlayerDeck.flush();
 		playerDecks.clear();
+		playerDecks.add(activePlayerDeck);		
 		dealerDeck.addCard(cardFromPack());
 		dealerDeck.addCard(cardFromPack());
 		activePlayerDeck.addCard(cardFromPack());
 		activePlayerDeck.addCard(cardFromPack());
-		//TODO: Winning ?
+		if(activePlayerDeck.isBlackJack() && dealerDeck.isBlackJack()) {
+			state = GameState.PAY_OUT;
+			payOut = bet;
+		}
+		else if (activePlayerDeck.isBlackJack()) {
+			state = GameState.PAY_OUT;
+			payOut = 2*bet; //TODO temp
+		}
+		else if (dealerDeck.isBlackJack()) {
+			state = GameState.PAY_OUT;
+		}
 		notifyGameObserver();
 	}
 	
@@ -112,16 +143,13 @@ public class Game implements GameInterface{
 	private void playDealer() {
 		while(dealerDeck.getValue() < 17) {
 			dealerDeck.addCard(cardFromPack());
+		}		
+		for(PlayerDeck pd : playerDecks) {
+			int valueDD = dealerDeck.getValue();
+			if((valueDD > 21 || 21-pd.getValue() < 21-valueDD) && pd.getValue()<21) {
+				payOut += 2*bet;
+			}
 		}
-		//TODO
-		/*
-		 * for each playerdeck
-		 * 		if dealerdeck >21 || playerDeck näher an 21 dran
-		 * 			add bet to payout
-		 * 		else
-		 * 			add 0 to payout
-		 *
-		 */
 	}
 	
 	private void notifyGameObserver() {
@@ -129,12 +157,14 @@ public class Game implements GameInterface{
 			ob.update(this);
 		}
 	}
+	
 	@Override
 	public void setPlayerMoney(int cash) {
 		playerMoney = cash;		
 	}
 	@Override
 	public void doubleBet() {
+		state = GameState.PAY_OUT;
 		playerMoney -= bet;
 		bet *= 2;
 		activePlayerDeck.addCard(cardFromPack());
@@ -169,7 +199,7 @@ public class Game implements GameInterface{
 	@Override
 	public boolean playerCanSplit() {
 		//TODO Config refactor later on
-		return activePlayerDeck.getSize() == 2 && playerDecks.size() == 0 && 
+		return activePlayerDeck.getSize() == 2 && playerDecks.size() == 1 && 
 				activePlayerDeck.canSplit();
 				
 	}
@@ -177,7 +207,7 @@ public class Game implements GameInterface{
 	@Override
 	public boolean playerCanDouble() {
 		//TODO Config refactor later on
-		return activePlayerDeck.getSize() == 2 && playerDecks.size() == 0 && 
+		return activePlayerDeck.getSize() == 2 && playerDecks.size() == 1 && 
 				activePlayerDeck.getValue() > 8 && activePlayerDeck.getValue() < 12;
 	}
 
@@ -187,7 +217,7 @@ public class Game implements GameInterface{
 	}
 
 	@Override
-	public State getState() {
+	public GameState getState() {
 		return state;
 	}
 
@@ -201,6 +231,11 @@ public class Game implements GameInterface{
 	public void payOutPlayer() {
 		// TODO Auto-generated method stub
 		
+	}
+
+	@Override
+	public PlayerDeck getActivePlayerDeck() {
+		return this.activePlayerDeck;
 	}
 	
 }

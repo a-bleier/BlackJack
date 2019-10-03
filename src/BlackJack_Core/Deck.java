@@ -18,6 +18,10 @@ public class Deck {
 	public boolean isBlackJack() {
 		return getValue() == 21 && deck.size() == 2;
 	}
+	
+	public boolean isBust() {
+		return getValue() > 21;
+	}
 
 	public int getValue() {
 		int sum = 0;
@@ -51,7 +55,6 @@ public class Deck {
 		for(Card c : deck) {
 			s = s + c.toString()+ " " ;
 		}
-		s += "\n";
 		return s;
 	}
 }

@@ -23,8 +23,9 @@ public interface GameInterface {
 	public int getPlayerMoney();
 	public int getInsurance();
 	public int getPayOut();
+	public PlayerDeck getActivePlayerDeck();
 	public Config getConfig();
-	public State getState();
+	public GameState getState();
 	
 	public boolean playerCanSplit();
 	public boolean playerCanDouble();
